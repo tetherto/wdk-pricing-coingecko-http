@@ -1,1 +1,2 @@
-# wdk-pricing-coingecko-http
+# @tetherto/wdk-pricing-coingecko-http
+....
