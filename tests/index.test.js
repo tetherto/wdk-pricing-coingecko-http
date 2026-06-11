@@ -131,6 +131,13 @@ describe('CoingeckoPricingClient', () => {
       await expect(client.getCurrentPrice('FAKE', 'USD'))
         .rejects.toThrow('Unknown symbol: FAKE')
     })
+
+    it('should return undefined when the API has no data for the pair', async () => {
+      mockGet.mockResolvedValue({ data: {} })
+
+      const price = await client.getCurrentPrice('BTC', 'USD')
+      expect(price).toBeUndefined()
+    })
   })
 
   describe('getMultiCurrentPrices', () => {
@@ -208,6 +215,17 @@ describe('CoingeckoPricingClient', () => {
       const prices = await client.getMultiCurrentPrices([])
       expect(prices).toEqual([])
     })
+
+    it('should return undefined for pairs the API has no data for', async () => {
+      mockGet.mockResolvedValue({ data: { bitcoin: { usd: 65000 } } })
+
+      const prices = await client.getMultiCurrentPrices([
+        { from: 'BTC', to: 'USD' },
+        { from: 'ETH', to: 'USD' }
+      ])
+
+      expect(prices).toEqual([65000, undefined])
+    })
   })
 
   describe('getMultiPriceData', () => {
@@ -274,18 +292,35 @@ describe('CoingeckoPricingClient', () => {
       const result = await client.getMultiPriceData([])
       expect(result).toEqual([])
     })
+
+    it('should return undefined for pairs the API has no data for', async () => {
+      mockGet.mockResolvedValue({
+        data: { bitcoin: { usd: 65000, usd_24h_change: 1.0 } }
+      })
+
+      const result = await client.getMultiPriceData([
+        { from: 'BTC', to: 'USD' },
+        { from: 'ETH', to: 'USD' }
+      ])
+
+      expect(result[0].lastPrice).toBe(65000)
+      expect(result[1]).toBeUndefined()
+    })
   })
 
   describe('getHistoricalPrice', () => {
+    const HOUR = 3600000
+    // Anchor ranges to "now" so they stay inside the free-tier 365-day window.
+    const end = Date.now()
+
     it('should return mapped historical data', async () => {
-      const end = 1709913600000
-      const start = end - (3 * 3600000)
+      const start = end - (3 * HOUR)
 
       mockGet.mockResolvedValue({
         data: {
           prices: [
             [start, 62000],
-            [start + 3600000, 62500],
+            [start + HOUR, 62500],
             [end, 63000]
           ]
         }
@@ -294,9 +329,9 @@ describe('CoingeckoPricingClient', () => {
       const result = await client.getHistoricalPrice('BTC', 'USD', { start, end })
 
       expect(result).toEqual([
-        { price: 62000, ts: start },
-        { price: 62500, ts: start + 3600000 },
-        { price: 63000, ts: end }
+        { price: 62000, timestamp: start },
+        { price: 62500, timestamp: start + HOUR },
+        { price: 63000, timestamp: end }
       ])
 
       expect(mockGet).toHaveBeenCalledWith('/coins/bitcoin/market_chart/range', {
@@ -308,12 +343,11 @@ describe('CoingeckoPricingClient', () => {
       })
     })
 
-    it('should cap results to MAX_HISTORICAL_ENTRIES', async () => {
-      const end = 1709913600000
-      const start = end - (200 * 3600000)
+    it('should return every point by default (no capping)', async () => {
+      const start = end - (200 * HOUR)
 
       const prices = Array.from({ length: 200 }, (_, i) => [
-        start + (i * 3600000),
+        start + (i * HOUR),
         60000 + i
       ])
 
@@ -321,29 +355,79 @@ describe('CoingeckoPricingClient', () => {
 
       const result = await client.getHistoricalPrice('BTC', 'USD', { start, end })
 
-      expect(result.length).toBeLessThanOrEqual(client.MAX_HISTORICAL_ENTRIES)
-      expect(result.length).toBe(100)
+      expect(result.length).toBe(200)
     })
 
-    it('should downsample via recursive halving', async () => {
-      const end = 1709913600000
-      const start = end - (150 * 3600000)
+    it('should evenly downsample to maxEntries, preserving first and last', async () => {
+      const start = end - (200 * HOUR)
 
-      const prices = Array.from({ length: 150 }, (_, i) => [
-        start + (i * 3600000),
+      const prices = Array.from({ length: 200 }, (_, i) => [
+        start + (i * HOUR),
         60000 + i
       ])
 
       mockGet.mockResolvedValue({ data: { prices } })
 
-      const result = await client.getHistoricalPrice('BTC', 'USD', { start, end })
+      const result = await client.getHistoricalPrice('BTC', 'USD', {
+        start,
+        end,
+        maxEntries: 100
+      })
 
-      expect(result.length).toBe(75)
+      expect(result.length).toBe(100)
+      // First and last points are always retained.
+      expect(result[0]).toEqual({ price: 60000, timestamp: start })
+      expect(result[99]).toEqual({ price: 60199, timestamp: start + 199 * HOUR })
+    })
+
+    it('should not downsample when result is already within maxEntries', async () => {
+      const start = end - (3 * HOUR)
+
+      mockGet.mockResolvedValue({
+        data: {
+          prices: [
+            [start, 62000],
+            [start + HOUR, 62500],
+            [end, 63000]
+          ]
+        }
+      })
+
+      const result = await client.getHistoricalPrice('BTC', 'USD', {
+        start,
+        end,
+        maxEntries: 100
+      })
+
+      expect(result.length).toBe(3)
+    })
+
+    it('should throw for start older than 365 days on a non-Pro client', async () => {
+      const start = Date.now() - (366 * 24 * HOUR)
+
+      await expect(
+        client.getHistoricalPrice('BTC', 'USD', { start, end: Date.now() })
+      ).rejects.toThrow('requires a CoinGecko Pro API key')
+
+      expect(mockGet).not.toHaveBeenCalled()
+    })
+
+    it('should allow start older than 365 days on a Pro client', async () => {
+      const proClient = new CoingeckoPricingClient({
+        baseURL: 'https://pro-api.coingecko.com/api/v3',
+        apiKey: 'CG-pro456'
+      })
+      const start = Date.now() - (400 * 24 * HOUR)
+
+      mockGet.mockResolvedValue({ data: { prices: [] } })
+
+      await expect(
+        proClient.getHistoricalPrice('BTC', 'USD', { start, end: Date.now() })
+      ).resolves.toEqual([])
     })
 
     it('should convert timestamps to seconds for the API call', async () => {
-      const start = 1709251200000
-      const end = 1709913600000
+      const start = end - (3 * HOUR)
 
       mockGet.mockResolvedValue({ data: { prices: [] } })
 
@@ -352,8 +436,8 @@ describe('CoingeckoPricingClient', () => {
       expect(mockGet).toHaveBeenCalledWith('/coins/bitcoin/market_chart/range', {
         params: {
           vs_currency: 'usd',
-          from: 1709251200,
-          to: 1709913600
+          from: Math.floor(start / 1000),
+          to: Math.floor(end / 1000)
         }
       })
     })

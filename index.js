@@ -19,95 +19,93 @@ import axios from 'axios'
 
 /**
  * @typedef {import('@tetherto/wdk-pricing-provider').PricePair} PricePair
- * @typedef {import('@tetherto/wdk-pricing-provider').HistoricalPriceOptions} HistoricalPriceOptions
  * @typedef {import('@tetherto/wdk-pricing-provider').HistoricalPriceResult} HistoricalPriceResult
  * @typedef {import('@tetherto/wdk-pricing-provider').PriceData} PriceData
  */
 
-// CoinGecko identifies assets by slug (e.g. "tether-gold" for XAUT, "avalanche-2" for AVAX)
-// rather than ticker symbols. These slugs are not derivable from the ticker, so we need
-// an explicit map. Callers can extend or override via the constructor's coinIds option.
+/**
+ * @typedef {Object} CoingeckoPricingClientOptions
+ * @property {string} [baseURL] - CoinGecko API base URL. Use the Pro host
+ *   (https://pro-api.coingecko.com/api/v3) together with a Pro key
+ *   (default: https://api.coingecko.com/api/v3).
+ * @property {Object<string, string>} [coinIds] - Symbol-to-CoinGecko-ID overrides,
+ *   merged on top of the built-in defaults.
+ * @property {string} [apiKey] - CoinGecko API key. The matching auth header is
+ *   selected from the base URL: the Demo header for the public host, the Pro
+ *   header for the Pro host.
+ */
 
+/**
+ * @typedef {Object} HistoricalPriceQuery
+ * @property {number} start - Start of the range, Unix timestamp in milliseconds (required).
+ * @property {number} end - End of the range, Unix timestamp in milliseconds (required).
+ * @property {number} [maxEntries] - When set, evenly downsamples the result to at most
+ *   this many points, always keeping the first and last point.
+ */
+
+// CoinGecko identifies assets by slug (e.g. "tether-gold" for XAUT) rather than ticker
+// symbols, and the slug is not derivable from the ticker. The default map stays small and
+// tailored to Tether tokens plus the majors; callers extend or override via opts.coinIds.
 const DEFAULT_COIN_IDS = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
   USDT: 'tether',
   XAUT: 'tether-gold',
-  LTC: 'litecoin',
-  XRP: 'ripple',
-  SOL: 'solana',
-  AVAX: 'avalanche-2',
-  DOGE: 'dogecoin',
-  DOT: 'polkadot',
-  MATIC: 'matic-network',
-  LINK: 'chainlink',
-  UNI: 'uniswap',
-  AAVE: 'aave',
-  ADA: 'cardano',
-  NEAR: 'near',
-  EOS: 'eos',
-  TRX: 'tron',
-  ALGO: 'algorand',
-  MXNT: 'mexican-peso-tether',
-  EURT: 'tether-eurt',
-  CNHT: 'cny-tether'
+  USAT: 'usa'
 }
 
-export class CoingeckoPricingClient extends PricingClient {
-  /** @internal */
-  MAX_HISTORICAL_ENTRIES = 100
+// Free/Demo tier only exposes the trailing 365 days of historical data; the Pro tier
+// reaches back to 2013, so the window is enforced for non-Pro clients only.
+// @see https://www.coingecko.com/learn/download-bitcoin-historical-data
+const HISTORICAL_DATA_AGE_MS = 365 * 24 * 60 * 60000
 
+const PRO_HOST = 'pro-api.coingecko.com'
+
+const DEFAULT_BASE_URL = 'https://api.coingecko.com/api/v3'
+
+export class CoingeckoPricingClient extends PricingClient {
   /**
-   * @param {Object} [opts={}]
-   * @param {string} [opts.baseURL='https://api.coingecko.com/api/v3']
-   * @param {Object<string, string>} [opts.coinIds] - Custom symbol-to-CoinGecko-ID map, merged on top of defaults
-   * @param {string} [opts.apiKey] - CoinGecko API key for higher rate limits (free or pro tier)
+   * Creates a CoinGecko-backed pricing client.
+   *
+   * @param {CoingeckoPricingClientOptions} [opts] - Client options (default: {}).
    */
   constructor (opts = {}) {
     super()
 
+    const baseURL = opts.baseURL || DEFAULT_BASE_URL
+
+    /** @private */
+    this._isPro = baseURL.includes(PRO_HOST)
+
     const headers = {}
     if (opts.apiKey) {
-      // CoinGecko uses different auth headers per tier: x-cg-demo-api-key for the free
-      // tier and x-cg-pro-api-key for paid. The pro tier uses a separate base URL.
-      const isPro = opts.baseURL && opts.baseURL.includes('pro-api.coingecko.com')
-      headers[isPro ? 'x-cg-pro-api-key' : 'x-cg-demo-api-key'] = opts.apiKey
+      // CoinGecko uses different auth headers per tier: x-cg-demo-api-key for the public
+      // host and x-cg-pro-api-key for the Pro host.
+      headers[this._isPro ? 'x-cg-pro-api-key' : 'x-cg-demo-api-key'] = opts.apiKey
     }
 
-    /** @internal */
-    this.client = axios.create({
-      baseURL: opts.baseURL || 'https://api.coingecko.com/api/v3',
-      headers
-    })
-    /** @internal */
-    this.coinIds = { ...DEFAULT_COIN_IDS, ...opts.coinIds }
+    /** @private */
+    this._client = axios.create({ baseURL, headers })
+
+    /** @private */
+    this._coinIds = { ...DEFAULT_COIN_IDS, ...opts.coinIds }
   }
 
+  /** @private */
   _coinId (symbol) {
-    const id = this.coinIds[symbol.toUpperCase()]
-    if (!id) throw new Error(`Unknown symbol: ${symbol}`)
+    const id = this._coinIds[symbol.toUpperCase()]
+    if (!id) {
+      throw new Error(`Unknown symbol: ${symbol}. Add it to coinIds in the constructor`)
+    }
     return id
   }
 
-  /**
-   * @param {string} from
-   * @param {string} to
-   * @returns {Promise<number>}
-   */
-  async getCurrentPrice (from, to) {
-    const id = this._coinId(from)
-    const vs = to.toLowerCase()
-    const response = await this.client.get('/simple/price', {
-      params: { ids: id, vs_currencies: vs }
-    })
-    return response.data[id][vs]
-  }
-
+  /** @private */
   _fetchPrices (list, extraParams = {}) {
     const ids = [...new Set(list.map((p) => this._coinId(p.from)))]
     const currencies = [...new Set(list.map((p) => p.to.toLowerCase()))]
 
-    return this.client.get('/simple/price', {
+    return this._client.get('/simple/price', {
       params: {
         ids: ids.join(','),
         vs_currencies: currencies.join(','),
@@ -116,18 +114,68 @@ export class CoingeckoPricingClient extends PricingClient {
     })
   }
 
-  /**
-   * @param {PricePair[]} list
-   * @returns {Promise<number[]>}
-   */
-  async getMultiCurrentPrices (list) {
-    const response = await this._fetchPrices(list)
-    return list.map((p) => response.data[this._coinId(p.from)][p.to.toLowerCase()])
+  /** @private */
+  _resample (results, maxEntries) {
+    if (results.length <= maxEntries) return results
+    if (maxEntries <= 1) return results.slice(0, maxEntries)
+
+    // Even resample preserving the first and last point: index 0 maps to the oldest
+    // point and index (maxEntries - 1) maps to the newest, so the count is deterministic.
+    const lastIndex = results.length - 1
+    const step = lastIndex / (maxEntries - 1)
+    return Array.from({ length: maxEntries }, (_, i) => results[Math.round(i * step)])
   }
 
   /**
-   * @param {PricePair[]} list
-   * @returns {Promise<PriceData[]>}
+   * Fetches the current price for a single asset/currency pair.
+   *
+   * @param {string} from - Asset ticker symbol (e.g. 'BTC'), resolved to a CoinGecko ID
+   *   via the coinIds map; case-insensitive.
+   * @param {string} to - Currency code CoinGecko accepts as `vs_currency` (e.g. 'USD');
+   *   case-insensitive.
+   * @returns {Promise<number>} The current price. Resolves to undefined when CoinGecko
+   *   returns no data for the pair (matching the sibling fallback providers).
+   * @throws {Error} If `from` has no configured CoinGecko ID.
+   * @see https://docs.coingecko.com/reference/simple-price
+   */
+  async getCurrentPrice (from, to) {
+    const id = this._coinId(from)
+    const vs = to.toLowerCase()
+    const response = await this._client.get('/simple/price', {
+      params: { ids: id, vs_currencies: vs }
+    })
+    return response.data[id]?.[vs]
+  }
+
+  /**
+   * Fetches current prices for multiple pairs in a single batched request.
+   *
+   * @param {PricePair[]} list - Currency pairs to price; CoinGecko IDs are de-duplicated
+   *   before the request is sent.
+   * @returns {Promise<number[]>} Prices in the same order as `list`. An entry is undefined
+   *   when CoinGecko returns no data for that pair.
+   * @throws {Error} If any pair's `from` has no configured CoinGecko ID.
+   * @see https://docs.coingecko.com/reference/simple-price
+   */
+  async getMultiCurrentPrices (list) {
+    const response = await this._fetchPrices(list)
+    return list.map(
+      (p) => response.data[this._coinId(p.from)]?.[p.to.toLowerCase()]
+    )
+  }
+
+  /**
+   * Fetches full price data (last price and daily change) for multiple pairs in a single
+   * batched request.
+   *
+   * CoinGecko only returns the 24h change as a percentage, so the absolute `dailyChange`
+   * is derived from the last price and that percentage and is therefore an approximation.
+   *
+   * @param {PricePair[]} list - Currency pairs to price.
+   * @returns {Promise<PriceData[]>} Price data in the same order as `list`. An entry is
+   *   undefined when CoinGecko returns no data for that pair.
+   * @throws {Error} If any pair's `from` has no configured CoinGecko ID.
+   * @see https://docs.coingecko.com/reference/simple-price
    */
   async getMultiPriceData (list) {
     const response = await this._fetchPrices(list, { include_24hr_change: true })
@@ -135,33 +183,49 @@ export class CoingeckoPricingClient extends PricingClient {
     return list.map((p) => {
       const vs = p.to.toLowerCase()
       const coin = response.data[this._coinId(p.from)]
+      if (!coin || coin[vs] === undefined) return undefined
+
       const lastPrice = coin[vs]
-      const pctChange = coin[`${vs}_24h_change`]
-      const dailyChangeRelative = pctChange / 100
+      const dailyChangeRelative = coin[`${vs}_24h_change`] / 100
 
       return {
         lastPrice,
-        dailyChange: lastPrice - (lastPrice / (1 + dailyChangeRelative)),
+        dailyChange: lastPrice - lastPrice / (1 + dailyChangeRelative),
         dailyChangeRelative
       }
     })
   }
 
   /**
-   * @param {string} from
-   * @param {string} to
-   * @param {HistoricalPriceOptions} [opts={}]
-   * @returns {Promise<HistoricalPriceResult[]>}
+   * Fetches historical prices for a pair over a time range.
+   *
+   * @param {string} from - Asset ticker symbol (e.g. 'BTC'), resolved via the coinIds map;
+   *   case-insensitive.
+   * @param {string} to - Currency code CoinGecko accepts as `vs_currency` (e.g. 'USD');
+   *   case-insensitive.
+   * @param {HistoricalPriceQuery} opts - Range options. `start` and `end` (Unix ms) are
+   *   required; pass `maxEntries` to evenly downsample the result.
+   * @returns {Promise<HistoricalPriceResult[]>} Price points, oldest first. Returns every
+   *   point CoinGecko provides unless `maxEntries` is set.
+   * @throws {Error} If `from` has no configured CoinGecko ID, if `start`/`end` are missing,
+   *   or if `start` predates the trailing 365-day window on a non-Pro client.
+   * @see https://docs.coingecko.com/reference/coins-id-market-chart-range
    */
   async getHistoricalPrice (from, to, opts = {}) {
     if (!opts.start || !opts.end) {
       throw new Error('start and end timestamps are required')
     }
 
+    if (!this._isPro && opts.start < Date.now() - HISTORICAL_DATA_AGE_MS) {
+      throw new Error(
+        'Start date older than 365 days requires a CoinGecko Pro API key'
+      )
+    }
+
     const id = this._coinId(from)
     const vs = to.toLowerCase()
 
-    const response = await this.client.get(`/coins/${id}/market_chart/range`, {
+    const response = await this._client.get(`/coins/${id}/market_chart/range`, {
       params: {
         vs_currency: vs,
         from: Math.floor(opts.start / 1000),
@@ -171,15 +235,9 @@ export class CoingeckoPricingClient extends PricingClient {
 
     const results = response.data.prices.map((point) => ({
       price: point[1],
-      ts: point[0]
+      timestamp: point[0]
     }))
 
-    return this._cappedToMaxResults(results)
-  }
-
-  /** @internal */
-  _cappedToMaxResults (results) {
-    if (results.length <= this.MAX_HISTORICAL_ENTRIES) return results
-    return this._cappedToMaxResults(results.filter((_, i) => i % 2 === 0))
+    return opts.maxEntries ? this._resample(results, opts.maxEntries) : results
   }
 }
