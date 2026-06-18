@@ -132,11 +132,11 @@ describe('CoingeckoPricingClient', () => {
         .rejects.toThrow('Unknown symbol: FAKE')
     })
 
-    it('should return undefined when the API has no data for the pair', async () => {
+    it('should return null when the API has no data for the pair', async () => {
       mockGet.mockResolvedValue({ data: {} })
 
       const price = await client.getCurrentPrice('BTC', 'USD')
-      expect(price).toBeUndefined()
+      expect(price).toBeNull()
     })
   })
 
@@ -216,7 +216,7 @@ describe('CoingeckoPricingClient', () => {
       expect(prices).toEqual([])
     })
 
-    it('should return undefined for pairs the API has no data for', async () => {
+    it('should return null for pairs the API has no data for', async () => {
       mockGet.mockResolvedValue({ data: { bitcoin: { usd: 65000 } } })
 
       const prices = await client.getMultiCurrentPrices([
@@ -224,7 +224,7 @@ describe('CoingeckoPricingClient', () => {
         { from: 'ETH', to: 'USD' }
       ])
 
-      expect(prices).toEqual([65000, undefined])
+      expect(prices).toEqual([65000, null])
     })
   })
 
@@ -293,7 +293,7 @@ describe('CoingeckoPricingClient', () => {
       expect(result).toEqual([])
     })
 
-    it('should return undefined for pairs the API has no data for', async () => {
+    it('should return null for pairs the API has no data for', async () => {
       mockGet.mockResolvedValue({
         data: { bitcoin: { usd: 65000, usd_24h_change: 1.0 } }
       })
@@ -304,7 +304,7 @@ describe('CoingeckoPricingClient', () => {
       ])
 
       expect(result[0].lastPrice).toBe(65000)
-      expect(result[1]).toBeUndefined()
+      expect(result[1]).toBeNull()
     })
   })
 

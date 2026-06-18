@@ -133,7 +133,7 @@ export class CoingeckoPricingClient extends PricingClient {
    *   via the coinIds map; case-insensitive.
    * @param {string} to - Currency code CoinGecko accepts as `vs_currency` (e.g. 'USD');
    *   case-insensitive.
-   * @returns {Promise<number>} The current price. Resolves to undefined when CoinGecko
+   * @returns {Promise<number|null>} The current price. Resolves to null when CoinGecko
    *   returns no data for the pair (matching the sibling fallback providers).
    * @throws {Error} If `from` has no configured CoinGecko ID.
    * @see https://docs.coingecko.com/reference/simple-price
@@ -144,7 +144,7 @@ export class CoingeckoPricingClient extends PricingClient {
     const response = await this._client.get('/simple/price', {
       params: { ids: id, vs_currencies: vs }
     })
-    return response.data[id]?.[vs]
+    return response.data[id]?.[vs] ?? null
   }
 
   /**
@@ -152,15 +152,15 @@ export class CoingeckoPricingClient extends PricingClient {
    *
    * @param {PricePair[]} list - Currency pairs to price; CoinGecko IDs are de-duplicated
    *   before the request is sent.
-   * @returns {Promise<number[]>} Prices in the same order as `list`. An entry is undefined
-   *   when CoinGecko returns no data for that pair.
+   * @returns {Promise<Array<number|null>>} Prices in the same order as `list`. An entry is
+   *   null when CoinGecko returns no data for that pair.
    * @throws {Error} If any pair's `from` has no configured CoinGecko ID.
    * @see https://docs.coingecko.com/reference/simple-price
    */
   async getMultiCurrentPrices (list) {
     const response = await this._fetchPrices(list)
     return list.map(
-      (p) => response.data[this._coinId(p.from)]?.[p.to.toLowerCase()]
+      (p) => response.data[this._coinId(p.from)]?.[p.to.toLowerCase()] ?? null
     )
   }
 
@@ -172,8 +172,8 @@ export class CoingeckoPricingClient extends PricingClient {
    * is derived from the last price and that percentage and is therefore an approximation.
    *
    * @param {PricePair[]} list - Currency pairs to price.
-   * @returns {Promise<PriceData[]>} Price data in the same order as `list`. An entry is
-   *   undefined when CoinGecko returns no data for that pair.
+   * @returns {Promise<Array<PriceData|null>>} Price data in the same order as `list`. An entry is
+   *   null when CoinGecko returns no data for that pair.
    * @throws {Error} If any pair's `from` has no configured CoinGecko ID.
    * @see https://docs.coingecko.com/reference/simple-price
    */
@@ -183,7 +183,7 @@ export class CoingeckoPricingClient extends PricingClient {
     return list.map((p) => {
       const vs = p.to.toLowerCase()
       const coin = response.data[this._coinId(p.from)]
-      if (!coin || coin[vs] === undefined) return undefined
+      if (!coin || coin[vs] === undefined) return null
 
       const lastPrice = coin[vs]
       const dailyChangeRelative = coin[`${vs}_24h_change`] / 100
@@ -211,8 +211,8 @@ export class CoingeckoPricingClient extends PricingClient {
    *   or if `start` predates the trailing 365-day window on a non-Pro client.
    * @see https://docs.coingecko.com/reference/coins-id-market-chart-range
    */
-  async getHistoricalPrice (from, to, opts = {}) {
-    if (!opts.start || !opts.end) {
+  async getHistoricalPrice (from, to, opts) {
+    if (!opts?.start || !opts?.end) {
       throw new Error('start and end timestamps are required')
     }
 

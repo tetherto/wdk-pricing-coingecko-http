@@ -70,12 +70,12 @@ The `from` argument of every method is an asset ticker symbol (e.g. `BTC`) resol
 
 | Method                               | Description                             | Returns                            |
 | ------------------------------------ | --------------------------------------- | ---------------------------------- |
-| `getCurrentPrice(from, to)`          | Current price for one pair              | `Promise<number>`                  |
-| `getMultiCurrentPrices(list)`        | Current prices for many pairs (batched) | `Promise<number[]>`                |
-| `getMultiPriceData(list)`            | Last price + daily change (batched)     | `Promise<PriceData[]>`             |
+| `getCurrentPrice(from, to)`          | Current price for one pair              | `Promise<number \| null>`          |
+| `getMultiCurrentPrices(list)`        | Current prices for many pairs (batched) | `Promise<Array<number \| null>>`   |
+| `getMultiPriceData(list)`            | Last price + daily change (batched)     | `Promise<Array<PriceData \| null>>`|
 | `getHistoricalPrice(from, to, opts)` | Historical prices over a range          | `Promise<HistoricalPriceResult[]>` |
 
-`list` is an array of `{ from, to }` pairs. For the batched methods, results are returned in the same order as the input; an entry resolves to `undefined` when CoinGecko has no data for that pair (matching the sibling fallback providers).
+`list` is an array of `{ from, to }` pairs. For the batched methods, results are returned in the same order as the input; an entry resolves to `null` when CoinGecko has no data for that pair (matching the sibling fallback providers).
 
 #### `getHistoricalPrice(from, to, opts)`
 

@@ -32,7 +32,7 @@ export class CoingeckoPricingClient extends PricingClient {
      *   or if `start` predates the trailing 365-day window on a non-Pro client.
      * @see https://docs.coingecko.com/reference/coins-id-market-chart-range
      */
-    getHistoricalPrice(from: string, to: string, opts?: HistoricalPriceQuery): Promise<HistoricalPriceResult[]>;
+    getHistoricalPrice(from: string, to: string, opts: HistoricalPriceQuery): Promise<HistoricalPriceResult[]>;
 }
 export type PricePair = import("@tetherto/wdk-pricing-provider").PricePair;
 export type HistoricalPriceResult = import("@tetherto/wdk-pricing-provider").HistoricalPriceResult;
