@@ -1,0 +1,72 @@
+{
+  "name": "@tetherto/wdk-pricing-coingecko-http",
+  "version": "1.0.0-beta.2",
+  "description": "Coingecko HTTP client for @tetherto/wdk-pricing-provider",
+  "keywords": [
+    "tetherto",
+    "wdk",
+    "wallet",
+    "bitcoin",
+    "ethereum",
+    "pricing",
+    "provider",
+    "coingecko",
+    "blockchain"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tetherto/wdk-pricing-coingecko-http.git"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "standard",
+    "lint:fix": "standard --fix",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration",
+    "test:integration:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --coverage",
+    "test:bare": "bare tests/bare-runtime.test.mjs",
+    "build:types": "tsc"
+  },
+  "author": "Tether",
+  "type": "module",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "bare": "./bare.js",
+      "default": "./index.js"
+    },
+    "./package": {
+      "default": "./package.json"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "standard": {
+    "ignore": [
+      "bare.js",
+      "tests/**/*.js"
+    ]
+  },
+  "jest": {
+    "testPathIgnorePatterns": [
+      "/tests/bare-runtime.test.mjs$"
+    ]
+  },
+  "dependencies": {
+    "@tetherto/wdk-pricing-provider": "1.0.0-beta.5",
+    "axios": "1.12.2",
+    "bare-node-runtime": "^1.2.0"
+  },
+  "devDependencies": {
+    "brittle": "3.19.0",
+    "cross-env": "10.1.0",
+    "jest": "30.2.0",
+    "standard": "17.1.2",
+    "typescript": "5.9.3"
+  }
+}
