@@ -4,7 +4,7 @@ Note: This package is in beta. Please test in a dev setup first.
 
 HTTP client for prices from CoinGecko. It uses the [CoinGecko HTTP API](https://docs.coingecko.com/reference/introduction) to obtain current prices and historical data for a given ticker, and serves as a fallback for the Bitfinex provider when that becomes unavailable.
 
-It works as a `PricingClient` for [`@tetherto/wdk-pricing-provider`](https://github.com/tetherto/lib-wallet-pricing-provider).
+It works as a `PricingClient` for [`@tetherto/wdk-pricing-provider`](https://github.com/tetherto/wdk-pricing-provider).
 
 ## 🔍 About WDK
 
@@ -12,7 +12,7 @@ This module is part of the WDK (Wallet Development Kit) project. Learn more at h
 
 ## ✨ Features
 
-- Compatible with [@tetherto/wdk-pricing-provider](https://github.com/tetherto/lib-wallet-pricing-provider)
+- Compatible with [@tetherto/wdk-pricing-provider](https://github.com/tetherto/wdk-pricing-provider)
 - Current price for a single pair, or batched for many pairs in one request
 - Full price data (last price + daily change) batched in one request
 - Historical prices over a time range, with optional even downsampling

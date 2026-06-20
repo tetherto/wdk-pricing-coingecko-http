@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/wdk-pricing-coingecko-http",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.1",
   "description": "Coingecko HTTP client for @tetherto/wdk-pricing-provider",
   "keywords": [
     "tetherto",
