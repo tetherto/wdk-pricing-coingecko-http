@@ -8,7 +8,7 @@ It works as a `PricingClient` for [`@tetherto/wdk-pricing-provider`](https://git
 
 ## 🔍 About WDK
 
-This module is part of the WDK (Wallet Development Kit) project. Learn more at https://docs.wallet.tether.io.
+This module is part of WDK (Wallet Development Kit) by Tether. See the [Price Rates documentation](https://docs.wdk.tether.io/tools/price-rates/).
 
 ## ✨ Features
 
